@@ -4,7 +4,6 @@ const dnscache = require("dnscache");
 const net = require("net");
 const EventEmitter = require("events");
 
-
 const CONNECTION_EVENT_CODES = {
   HANDHSKAKE: "handshake",
   HELO_OK: "helo_ok",
@@ -121,7 +120,6 @@ class EmailVerifier {
 
       client.on("data", (dataBytes) => {
         let dataString = dataBytes.toString();
-        
         let commands = dataString.split('\r\n').filter(r => r);
         commands = commands.map(command => {
           let cd = command.replace(/([0-9]{3})-?/g, "$1 ").split(" ")
@@ -138,6 +136,9 @@ class EmailVerifier {
 
         if (error) {
           client.end();
+          if (error.fullCode === 550) {
+            return resolve(false);
+          }
           return reject(new Error(error.message))
         } else {
           
