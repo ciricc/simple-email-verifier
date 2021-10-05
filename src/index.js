@@ -8,7 +8,7 @@ const CONNECTION_EVENT_CODES = {
   HANDHSKAKE: "handshake",
   HELO_OK: "helo_ok",
   MAIL_FROM_OK: "mailfrom_ok",
-  RCPT_OK: "rcpt_ok",
+  SEND_QUIT: "send_quit",
 }
 
 /**
@@ -90,37 +90,90 @@ class EmailVerifier {
    */
   async verifySmtpRecord(mxRecord, email) {
     return new Promise((resolve, reject) => {
-      
       let connectionState = {
         handshake: false,
-        heloSent: false,
-        mailFromSent: false,
+        heloSentOk: false,
+        mailFromSentOk: false,
         rcptToSent: false,
         quitSent: false,
+        errorMessage: "",
+        quitTimeout: null,
+        receivedFirstBytes: false,
+        log: [],
       }
       
       let connectionEvents = new EventEmitter();
 
-      connectionEvents.on(CONNECTION_EVENT_CODES.HANDHSKAKE, () => client.write("HELO HI\r\n"));
-      connectionEvents.on(CONNECTION_EVENT_CODES.HELO_OK, () => client.write(`MAIL FROM: <${this.mailFrom}>\r\n`));
-      connectionEvents.on(CONNECTION_EVENT_CODES.MAIL_FROM_OK, () => client.write(`RCPT TO: <${email}>\r\n`));
-      connectionEvents.on(CONNECTION_EVENT_CODES.RCPT_OK, () => client.write(`QUIT\r\n`))
+      connectionEvents.on(CONNECTION_EVENT_CODES.HANDHSKAKE, () => {
+        connectionState.handshake = true;
+        client.write(`HELO ${mxRecord}\r\n`);
+      });
+
+      connectionEvents.on(CONNECTION_EVENT_CODES.HELO_OK, () => {  
+        connectionState.heloSentOk = true;
+        client.write(`MAIL FROM: <${this.mailFrom}>\r\n`)
+      });
+      
+      connectionEvents.on(CONNECTION_EVENT_CODES.MAIL_FROM_OK, () => {
+        connectionState.mailFromSentOk = true;
+        client.write(`RCPT TO: <${email}>\r\n`);
+      });
+
+      const sendQuit = () => {
+        if (client.destroyed || connectionState.quitSent || !connectionState.receivedFirstBytes) return;
+        connectionState.quitSent = true;
+        client.write(`QUIT\r\n`);
+      }
 
       let client = net.createConnection(25, mxRecord);
-      
+
+      let _write = client.write;
+      client.write = function (message) {
+        connectionState.log.push({
+          C: message
+        })
+        return _write.call(client, message)
+      }
+
       client.setTimeout(this.timeout);
 
       client.on("timeout", () => {
-        client.end();
-        return reject(new Error("Connection timeout expired! (" + this.timeout + "ms)"))
+        connectionState.errorMessage = "Connection timeout expired! (" + this.timeout + "ms)";
+        sendQuit();
+        if (!connectionState.quitTimeout) {
+          connectionState.quitTimeout = setTimeout(() => {
+            client.end();
+            return reject(new Error(connectionState.errorMessage));
+          }, 10000);
+        }
+      });
+
+      client.on("close", () => {
+        clearTimeout(connectionState.quitTimeout);
+        if (connectionState.errorMessage) {
+          if (connectionState.mailFromSentOk) {
+            return resolve(false);
+          } else {
+            return reject(new Error(connectionState.errorMessage));
+          }
+        } else {
+          return resolve(true);
+        }
       });
 
       client.on("error", (err) => {
         return reject(new Error("Connection error smtp: " + err.message));
-      });
+      }); 
 
       client.on("data", (dataBytes) => {
+        connectionState.receivedFirstBytes = true;
+
         let dataString = dataBytes.toString();
+
+        connectionState.log.push({
+          S: dataString
+        })
+
         let commands = dataString.split('\r\n').filter(r => r);
         commands = commands.map(command => {
           let cd = command.replace(/([0-9]{3})-?/g, "$1 ").split(" ")
@@ -136,42 +189,38 @@ class EmailVerifier {
         });
 
         if (error) {
-          client.end();
-          if (error.fullCode === 550) {
-            return resolve(false);
+          connectionState.errorMessage = error.message;
+          if (!connectionState.handshake) {
+            return;
           }
-          return reject(new Error(error.message))
+          return sendQuit();
         } else {
+
+          if (connectionState.quitSent) {
+            return;
+          }
           
           if (!connectionState.handshake) { // handhake response got
             if (commands[0].fullCode === 220) {
-              connectionState.handshake = true;
               return connectionEvents.emit(CONNECTION_EVENT_CODES.HANDHSKAKE);
             } 
-          } else if (!connectionState.heloSent) { // got response to helo
-            if (commands[0].code[0] === 2) {
-              connectionState.heloSent = true;
-              return connectionEvents.emit(CONNECTION_EVENT_CODES.HELO_OK); 
+          } else if (!connectionState.heloSentOk) {
+            if (commands[0].fullCode === 250) {
+              return connectionEvents.emit(CONNECTION_EVENT_CODES.HELO_OK);
             }
-          } else if (!connectionState.mailFromSent) { // got response to mailfrom
-            if (commands[0].code[0] === 2) {
-              connectionState.mailFromSent = true;
-              return connectionEvents.emit(CONNECTION_EVENT_CODES.MAIL_FROM_OK); 
+          } else if (!connectionState.mailFromSentOk) {
+            if (commands[0].fullCode === 250) {
+              return connectionEvents.emit(CONNECTION_EVENT_CODES.MAIL_FROM_OK);
             }
-          } else if (!connectionState.quitSent) {
-            if (commands[0].code[0] === 2) {
-              connectionState.heloSent = true;
-              return connectionEvents.emit(CONNECTION_EVENT_CODES.RCPT_OK); 
-            }
-          } else { // all steps left
-            if (commands[0].code[0] === 2) {
-              client.end();
-              return resolve(true)
+          } else if (!connectionState.rcptToSent) {
+            if (commands[0].fullCode === 250) {
+              connectionState.rcptToSent = true;
+              return sendQuit();
             }
           }
 
-          client.end();
-          return reject(new Error("Unknow response: " + commands[0].fullCode + "; " + commands[0].message));
+          connectionState.errorMessage = "Unknow response: " + commands[0].fullCode + "; " + commands[0].message;
+          return sendQuit();
         }
       });
     });
