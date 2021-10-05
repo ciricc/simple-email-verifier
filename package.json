@@ -17,9 +17,7 @@
   "author": "ciricc",
   "license": "ISC",
   "dependencies": {
-    "dnscache": "^1.0.2",
-    "http-proxy": "^1.18.1",
-    "socks": "^2.6.1"
+    "dnscache": "^1.0.2"
   },
   "repository": {
     "url": "https://github.com/ciricc/simple-email-verifier.git",
