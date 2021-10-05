@@ -1,0 +1,15 @@
+{
+  "name": "simple-email-verifier",
+  "version": "1.0.0",
+  "description": "Email verification by looking for SMTP records and account existence checking",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["email verifier", "smtp email verifier", "check email", "email checker", "email", "mail"],
+  "author": "ciricc",
+  "license": "ISC",
+  "dependencies": {
+    "dnscache": "^1.0.2"
+  }
+}
