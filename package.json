@@ -1,16 +1,25 @@
 {
   "name": "simple-email-verifier",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "description": "Email verification by looking for SMTP records and account existence checking",
   "main": "src/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": ["email verifier", "smtp email verifier", "check email", "email checker", "email", "mail"],
+  "keywords": [
+    "email verifier",
+    "smtp email verifier",
+    "check email",
+    "email checker",
+    "email",
+    "mail"
+  ],
   "author": "ciricc",
   "license": "ISC",
   "dependencies": {
-    "dnscache": "^1.0.2"
+    "dnscache": "^1.0.2",
+    "http-proxy": "^1.18.1",
+    "socks": "^2.6.1"
   },
   "repository": {
     "url": "https://github.com/ciricc/simple-email-verifier.git",

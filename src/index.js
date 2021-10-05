@@ -104,6 +104,7 @@ class EmailVerifier {
       connectionEvents.on(CONNECTION_EVENT_CODES.HANDHSKAKE, () => client.write("HELO HI\r\n"));
       connectionEvents.on(CONNECTION_EVENT_CODES.HELO_OK, () => client.write(`MAIL FROM: <${this.mailFrom}>\r\n`));
       connectionEvents.on(CONNECTION_EVENT_CODES.MAIL_FROM_OK, () => client.write(`RCPT TO: <${email}>\r\n`));
+      connectionEvents.on(CONNECTION_EVENT_CODES.RCPT_OK, () => client.write(`QUIT\r\n`))
 
       let client = net.createConnection(25, mxRecord);
       
@@ -115,7 +116,7 @@ class EmailVerifier {
       });
 
       client.on("error", (err) => {
-        return reject(new Error("Connection error: " + err.message));
+        return reject(new Error("Connection error smtp: " + err.message));
       });
 
       client.on("data", (dataBytes) => {
@@ -156,6 +157,11 @@ class EmailVerifier {
             if (commands[0].code[0] === 2) {
               connectionState.mailFromSent = true;
               return connectionEvents.emit(CONNECTION_EVENT_CODES.MAIL_FROM_OK); 
+            }
+          } else if (!connectionState.quitSent) {
+            if (commands[0].code[0] === 2) {
+              connectionState.heloSent = true;
+              return connectionEvents.emit(CONNECTION_EVENT_CODES.RCPT_OK); 
             }
           } else { // all steps left
             if (commands[0].code[0] === 2) {
