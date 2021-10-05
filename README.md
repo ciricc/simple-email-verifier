@@ -22,9 +22,9 @@ const { EmailVerifier } = require("simple-email-verifier");
 
 let verifier = new EmailVerifier(10000);
 
-verifier.verify("random_email@big.com").then(result => {
+verifier.verify("admin@vk.com").then(result => {
   if (result) {
-    console.log("This email realy exists!");
+    console.log("This email realy exists :)");
   } else {
     console.log("Email not found :(");
   }
